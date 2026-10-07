@@ -1,0 +1,50 @@
+version: 2
+
+sources:
+  - name: raw
+    description: Untyped Parquet landed by pipeline/extract_load.py, one partition per load_date.
+    tables:
+      - name: reviews
+        meta:
+          external_location: "read_parquet('{{ env_var('DATA_DIR') }}/raw/reviews/*/*.parquet', hive_partitioning=true, union_by_name=true)"
+        # Raw-layer checks run as warnings: they never block the load, but every offending
+        # row is stored in the audit schema and exported for review.
+        columns:
+          - name: product_id
+            data_tests:
+              - not_null: {config: {severity: warn}}
+              - relationships:
+                  arguments: {to: ref('stg_products'), field: product_id}
+                  config: {severity: warn}
+          - name: review_text
+            data_tests:
+              - not_blank: {config: {severity: warn}}
+          - name: rating
+            data_tests:
+              - accepted_range: {arguments: {min_value: 1, max_value: 5}, config: {severity: warn}}
+        data_tests:
+          - unique_combination:
+              arguments: {combination: [author_id, product_id, submission_time, review_text]}
+              config: {severity: warn}
+      - name: products
+        meta:
+          external_location: "read_parquet('{{ env_var('DATA_DIR') }}/raw/products/*/*.parquet', hive_partitioning=true, union_by_name=true)"
+        columns:
+          - name: price_usd
+            data_tests:
+              - accepted_range: {arguments: {min_value: 0, max_value: 2000}, config: {severity: warn}}
+
+  - name: llm
+    description: Review tags written by pipeline/enrich_reviews.py (Gemini API).
+    schema: llm
+    tables:
+      - name: review_tags
+        data_tests:
+          - unique_combination:
+              arguments: {combination: [review_id, labeler]}
+        columns:
+          - name: review_id
+            data_tests: [not_null]
+          - name: sentiment
+            data_tests:
+              - accepted_values: {arguments: {values: [positive, neutral, negative]}}

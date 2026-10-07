@@ -1,0 +1,7 @@
+beauty_analytics:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: "{{ env_var('DATA_DIR') }}/warehouse.duckdb"
+      threads: 4

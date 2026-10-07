@@ -1,0 +1,8 @@
+data/
+reports/
+beauty_dbt/target/
+beauty_dbt/logs/
+beauty_dbt/dbt_packages/
+__pycache__/
+*.duckdb
+.env

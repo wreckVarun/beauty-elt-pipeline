@@ -1,0 +1,55 @@
+version: 2
+
+models:
+  - name: dim_brands
+    description: Brand dimension.
+    columns:
+      - name: brand_id
+        data_tests: [unique, not_null]
+      - name: brand_name
+        data_tests: [not_null]
+
+  - name: dim_products
+    description: Product dimension with a price band.
+    columns:
+      - name: product_id
+        data_tests: [unique, not_null]
+      - name: brand_id
+        data_tests:
+          - relationships: {arguments: {to: ref('dim_brands'), field: brand_id}}
+      - name: price_band
+        data_tests:
+          - accepted_values: {arguments: {values: ['1. <$25', '2. $25-50', '3. $50-100', '4. $100+']}}
+
+  - name: fct_reviews
+    description: Review fact table (grain = one review), incremental by load_date.
+    columns:
+      - name: review_id
+        data_tests: [unique, not_null]
+      - name: product_id
+        data_tests:
+          - relationships: {arguments: {to: ref('dim_products'), field: product_id}}
+      - name: brand_id
+        data_tests:
+          - relationships: {arguments: {to: ref('dim_brands'), field: brand_id}}
+      - name: rating
+        data_tests:
+          - not_null
+          - accepted_range: {arguments: {min_value: 1, max_value: 5}}
+      - name: helpfulness
+        data_tests:
+          - accepted_range: {arguments: {min_value: 0, max_value: 1}}
+      - name: review_date
+        data_tests: [not_null]
+
+  - name: mart_brand_complaints
+    description: Complaint-type mix per brand from LLM-tagged reviews.
+    data_tests:
+      - unique_combination:
+          arguments: {combination: [brand_id, labeler, complaint_type]}
+    columns:
+      - name: complaint_type
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [packaging, scent, skin_reaction, texture, ineffective, price_value, other, none]

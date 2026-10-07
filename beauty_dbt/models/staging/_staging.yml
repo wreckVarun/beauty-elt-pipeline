@@ -1,0 +1,25 @@
+version: 2
+
+models:
+  - name: stg_products
+    description: Latest product snapshot, typed. One row per product_id.
+    columns:
+      - name: product_id
+        data_tests: [unique, not_null]
+      - name: brand_id
+        data_tests: [not_null]
+      - name: price_usd
+        data_tests:
+          - not_null
+          - accepted_range: {arguments: {min_value: 0, max_value: 2000}}
+
+  - name: stg_reviews
+    description: Typed, de-duplicated reviews with a surrogate review_id (md5 of author, product, time, text).
+    columns:
+      - name: review_id
+        data_tests: [unique, not_null]
+      - name: rating
+        data_tests:
+          - accepted_values: {arguments: {values: [1, 2, 3, 4, 5]}}
+      - name: review_date
+        data_tests: [not_null]
