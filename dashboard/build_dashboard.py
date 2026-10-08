@@ -98,13 +98,13 @@ def main() -> None:
     labelers = q(con, "select labeler, count(*) n from marts.mart_brand_complaints group by 1 order by n desc")
     labeler = labelers["labeler"].iloc[0] if len(labelers) else None
 
-    kpis = q(con, """
+    kpis = next(q(con, """
         select (select count(*) from marts.fct_reviews)                         as reviews,
                (select count(*) from marts.dim_products)                        as products,
                (select count(*) from marts.dim_brands)                          as brands,
                (select count(distinct batch_id) from marts.fct_reviews)         as batches,
                (select round(avg(rating), 2) from marts.fct_reviews)            as avg_rating
-    """).iloc[0]
+    """).itertuples())  # not .iloc[0], which turns the int counts into floats
     tags = q(con, "select labeler, model, count(*) n from llm.review_tags group by 1, 2")
     try:
         failures = q(con, """select test_name, status, failures from audit_log.test_failure_log
