@@ -19,6 +19,7 @@ jobs:
     timeout-minutes: 90
     env:
       DATA_DIR: ${{ github.workspace }}/data
+      PYTHONUNBUFFERED: "1"   # progress lines show up live in the log
       ENRICH_LABELER: ${{ inputs.labeler || 'gemini' }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       # Pause between Gemini calls; ~6s keeps under the free tier's per-minute limit.
