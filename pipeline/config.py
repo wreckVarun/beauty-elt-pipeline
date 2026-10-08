@@ -14,5 +14,5 @@ REPORTS_DIR = ROOT / "reports"
 
 KAGGLE_DATASET = "nadyinky/sephora-products-and-skincare-reviews"
 
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite")
 ENRICH_SAMPLE_SIZE = int(os.environ.get("ENRICH_SAMPLE_SIZE", "2000"))
