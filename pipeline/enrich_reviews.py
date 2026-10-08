@@ -120,6 +120,9 @@ def gemini_label_batch(client, model: str, batch: list[tuple[str, int, str]], re
             by_id = {t.id: t for t in tags}
             return {i: by_id[f"r{i}"] for i in range(len(batch)) if f"r{i}" in by_id}
         except Exception as e:  # rate limits / transient 5xx
+            if getattr(e, "code", None) in (400, 401, 403, 404):  # bad request/key/model: retrying won't help
+                print(f"  Gemini call failed ({e.__class__.__name__}: {e})", file=sys.stderr)
+                break
             wait = 2 ** attempt * 5
             print(f"  Gemini call failed ({e.__class__.__name__}: {e}); retrying in {wait}s", file=sys.stderr)
             time.sleep(wait)

@@ -118,7 +118,7 @@ latest run's warnings also appear at the bottom of the dashboard.
 ### 4. LLM enrichment — `pipeline/enrich_reviews.py`
 
 Draws a deterministic sample of 2,000 reviews stratified by star rating (400 per star) and
-asks Gemini (`gemini-2.5-flash`, structured output via a Pydantic response schema, batches
+asks Gemini (`gemini-3.8-flash`, override with `GEMINI_MODEL`; structured output via a Pydantic response schema, batches
 of 20) for three fields per review: `sentiment`, `complaint_type` (packaging, scent,
 skin_reaction, texture, ineffective, price_value, other, none) and a short supporting quote.
 Results append to `llm.review_tags`, which `mart_brand_complaints` joins back onto the fact
