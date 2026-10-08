@@ -103,3 +103,18 @@ def test_fixture_contains_the_defects_the_tests_should_catch(products):
     assert (df["product_id"] == "P_UNKNOWN").any(), "expected orphan product ids"
     key = ["author_id", "product_id", "submission_time", "review_text"]
     assert df.duplicated(subset=key).any(), "expected duplicate reviews"
+
+
+def test_gemini_run_stops_after_repeated_failed_batches(tmp_path, monkeypatch):
+    """A bad key or exhausted quota should end the run early, not retry every batch."""
+    from pipeline import enrich_reviews
+
+    calls = []
+    monkeypatch.setattr(config, "WAREHOUSE", tmp_path / "w.duckdb")
+    monkeypatch.setattr(enrich_reviews, "sample_reviews",
+                        lambda con, labeler, n: [(f"id{i}", 1, "meh") for i in range(200)])
+    monkeypatch.setattr(enrich_reviews, "gemini_label_batch", lambda *a, **k: calls.append(1) or {})
+    monkeypatch.setenv("GEMINI_API_KEY", "test-not-a-real-key")
+    monkeypatch.setattr("sys.argv", ["enrich_reviews", "--sleep", "0"])
+    enrich_reviews.main()
+    assert len(calls) == 3

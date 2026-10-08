@@ -16,10 +16,14 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     env:
       DATA_DIR: ${{ github.workspace }}/data
       ENRICH_LABELER: ${{ inputs.labeler || 'gemini' }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      # Pause between Gemini calls; ~6s keeps under the free tier's per-minute limit.
+      # Override with a repo variable (Settings -> Secrets and variables -> Variables).
+      GEMINI_SLEEP_SECONDS: ${{ vars.GEMINI_SLEEP_SECONDS || '6' }}
       KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
       KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
     steps:
@@ -35,7 +39,7 @@ jobs:
       # The warehouse and the load watermark are carried between runs by the cache, so
       # each scheduled run picks up where the previous one stopped (incremental load).
       - name: Restore warehouse
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: data
           key: warehouse-${{ github.run_id }}
@@ -46,7 +50,7 @@ jobs:
 
       - name: Upload dashboard and failed records
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pipeline-output-${{ github.run_number }}
           path: |
@@ -54,3 +58,27 @@ jobs:
             data/test_failures/**
             beauty_dbt/target/run_results.json
           if-no-files-found: warn
+
+      - name: Stage dashboard for GitHub Pages
+        run: mkdir -p site && cp reports/dashboard.html site/index.html
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+  # Publishes the latest dashboard. Needs Pages turned on once:
+  # Settings -> Pages -> Build and deployment -> Source: GitHub Actions.
+  # Until then this job fails on its own without marking the pipeline run as failed.
+  pages:
+    needs: run
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v5

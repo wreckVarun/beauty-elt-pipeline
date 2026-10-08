@@ -30,7 +30,7 @@ REVIEW_DATE_EXPR = "try_cast(left(submission_time, 10) as date)"
 
 def resolve_source(source: str, source_dir: str | None) -> Path:
     if source == "kaggle":
-        import kagglehub  # needs KAGGLE_USERNAME / KAGGLE_KEY (or ~/.kaggle/kaggle.json)
+        import kagglehub  # public dataset: downloads anonymously; KAGGLE_USERNAME / KAGGLE_KEY optional
 
         return Path(kagglehub.dataset_download(config.KAGGLE_DATASET))
     if not source_dir:

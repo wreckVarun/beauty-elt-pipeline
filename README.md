@@ -1,10 +1,31 @@
 # Beauty Product Analytics ELT Pipeline
 
 An ELT pipeline over the Sephora products and reviews dataset: raw CSVs land as Parquet in
-daily batches, dbt models them on DuckDB into a star schema with 40 data tests, a Gemini
+daily batches, dbt models them on DuckDB into a star schema with 35 data tests, a Gemini
 step tags a 2,000-review sample by sentiment and complaint type, and a static dashboard
 shows top complaints by brand and price vs rating. A GitHub Actions workflow runs the whole
-thing daily.
+thing daily and publishes the dashboard to
+[wreckvarun.github.io/beauty-elt-pipeline](https://wreckvarun.github.io/beauty-elt-pipeline/).
+
+## Latest run on the real data
+
+The scheduled run on 8 Oct 2026 pulled the full Kaggle dump (no credentials needed; it is a
+public dataset) and backfilled everything up to 2023-02-19:
+
+| | |
+| --- | --- |
+| reviews landed (raw) | **1,071,473** (submitted 2008-08-28 → 2023-03-21) |
+| reviews in `fct_reviews` | **1,070,952** after de-duplication |
+| products / brands | 8,494 / 304 (140 brands have reviews) |
+| dbt build | 33 data tests on this pass: 31 pass, **2 warn**, 0 errors |
+| run time | about a minute for load + dbt on a laptop |
+
+The two warnings are real problems in the source, logged row by row and not blocking the load:
+
+* **1,433 reviews with blank text** (`not_blank` on `raw.reviews.review_text`). They are kept
+  for ratings but can never be tagged by the LLM.
+* **385 groups of duplicate reviews**, 906 rows in all: the same author, product, timestamp and
+  text landed more than once. `stg_reviews` keeps the first copy, dropping 521 rows.
 
 ```
 Kaggle CSVs ──> data/raw/<table>/load_date=YYYY-MM-DD/*.parquet   (pipeline/extract_load.py)
@@ -19,8 +40,8 @@ Gemini API ──> llm.review_tags ──> mart_brand_complaints           (pipe
 
 ## Quick start
 
-No Kaggle or Gemini credentials needed — this runs the whole pipeline on synthetic reviews
-generated against the real product catalogue in `seeds/`:
+No network or keys needed — this runs the whole pipeline on synthetic reviews generated
+against the real product catalogue in `seeds/`:
 
 ```bash
 pip install -r requirements.txt
@@ -28,14 +49,16 @@ pip install -r requirements.txt
 open reports/dashboard.html
 ```
 
-With real data and a Gemini key:
+With the real data (downloads anonymously from Kaggle, ~150 MB) and, optionally, a Gemini key:
 
 ```bash
-export KAGGLE_USERNAME=... KAGGLE_KEY=...      # https://www.kaggle.com/settings
-export GEMINI_API_KEY=...                      # https://aistudio.google.com/apikey
-./run_pipeline.sh --source kaggle --backfill-until 2023-01-31   # first run: backfill
-./run_pipeline.sh --source kaggle --days 1                      # later runs: one day each
+export GEMINI_API_KEY=...                      # https://aistudio.google.com/apikey (optional)
+./run_pipeline.sh --source kaggle              # first run: backfill to 30 days before the newest review
+./run_pipeline.sh --source kaggle --days 1     # later runs: one day each
 ```
+
+Without a key, `ENRICH_LABELER=keyword ./run_pipeline.sh ...` fills the complaints chart with
+the offline baseline instead.
 
 ## How it works
 
@@ -72,9 +95,9 @@ Six models, `dbt-duckdb` against `data/warehouse.duckdb`:
 `fct_reviews` is **incremental** (`delete+insert` on `review_id`): each run only reads load
 partitions newer than what the table already holds, so a daily run costs one day of data.
 
-### 3. Data quality — 40 tests, failures logged
+### 3. Data quality — 35 tests, failures logged
 
-`dbt build` runs 40 tests across two layers.
+`dbt build` runs 35 data tests across two layers (6 on the raw source, 3 on the LLM tags, 26 on the models).
 
 * **Raw layer, severity `warn`** — these describe the source, so they never block a load:
   null `product_id`, blank `review_text`, ratings outside 1–5, duplicate review rows,
@@ -120,16 +143,23 @@ warnings.
 
 `daily_pipeline.yml` runs at 06:00 UTC daily (and on demand), restores `data/` from the
 Actions cache so the watermark and warehouse carry across runs, runs `run_pipeline.sh`, and
-uploads the dashboard and any failed-record CSVs as artifacts. Secrets needed:
-`KAGGLE_USERNAME`, `KAGGLE_KEY`, `GEMINI_API_KEY`.
+uploads the dashboard and any failed-record CSVs as artifacts, then deploys the dashboard to
+GitHub Pages. The only secret it needs is `GEMINI_API_KEY`; the Kaggle download is anonymous.
+`GEMINI_SLEEP_SECONDS` (repo variable, default 6) paces Gemini calls for the free tier, and a
+run stops tagging after 3 batches in a row fail (bad key, daily quota exhausted) so the
+remainder is picked up the next day instead of burning the job on retries.
+
+The backfill stops 30 days short of the newest review, so the daily loads have about a month
+of real days to replay; after that, extract logs "Source exhausted" and the rest of the
+pipeline re-runs over the same data.
 
 `ci.yml` runs `pytest` and the synthetic end-to-end smoke run on every push and PR.
 
 ## Tests
 
 ```bash
-pytest -q              # 12 unit tests: watermark logic, partitioning, idempotency, labeler
-./scripts/smoke_run.sh # end-to-end: two batches, dbt build (40 tests), enrichment, dashboard
+pytest -q              # 13 unit tests: watermark logic, partitioning, idempotency, labeler, Gemini stop
+./scripts/smoke_run.sh # end-to-end: two batches, dbt build (35 tests), enrichment, dashboard
 ```
 
 ## Layout
@@ -148,7 +178,8 @@ reports/         generated: dashboard.html                                   (gi
 ## Notes on the data
 
 * `seeds/product_info.csv` is the real product catalogue (8,494 products, 304 brands).
-* The review files are **not** in the repo; they come from Kaggle at run time.
+* The review files are **not** in the repo; they come from Kaggle at run time. Scheduled runs
+  use the real reviews; only CI and `smoke_run.sh` use the synthetic fixture.
 * `pipeline/make_dev_fixture.py` generates **synthetic** reviews for real products so the
   pipeline can run without credentials. It deliberately injects duplicates, blank text,
   out-of-range ratings and orphan product ids so the data-quality tests have something to

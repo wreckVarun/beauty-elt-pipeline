@@ -134,6 +134,8 @@ def write_tags(con, labeler: str, model: str, batch, tags: dict[int, ReviewTag])
         review_id = batch[i][0]
         rows.append((review_id, labeler, model, tag.sentiment, tag.complaint_type,
                      tag.complaint_type != "none", tag.evidence[:200], now))
+    if not rows:  # a batch Gemini gave up on; duckdb rejects an empty executemany
+        return 0
     con.executemany("insert into llm.review_tags values (?, ?, ?, ?, ?, ?, ?, ?)", rows)
     return len(rows)
 
@@ -145,6 +147,8 @@ def main() -> None:
     ap.add_argument("--batch-size", type=int, default=20)
     ap.add_argument("--sleep", type=float, default=float(os.environ.get("GEMINI_SLEEP_SECONDS", "1")),
                     help="pause between Gemini calls, to stay under free-tier rate limits")
+    ap.add_argument("--max-failed-batches", type=int, default=3,
+                    help="stop after this many Gemini batches in a row fail (bad key, daily quota)")
     a = ap.parse_args()
 
     con = duckdb.connect(str(config.WAREHOUSE))
@@ -164,7 +168,7 @@ def main() -> None:
 
     todo = sample_reviews(con, labeler, a.sample_size)
     print(f"{len(todo):,} reviews left to tag with {labeler} ({model})")
-    written = 0
+    written = failed_in_a_row = 0
     for i in range(0, len(todo), a.batch_size):
         batch = todo[i : i + a.batch_size]
         if client is None:
@@ -172,6 +176,13 @@ def main() -> None:
         else:
             tags = gemini_label_batch(client, model, batch)
             time.sleep(a.sleep)
+            # A bad key or an exhausted daily quota fails every batch; stop instead of
+            # spending ~2.5 min of retries on each one. The rest is picked up next run.
+            failed_in_a_row = 0 if tags else failed_in_a_row + 1
+            if failed_in_a_row >= a.max_failed_batches:
+                print(f"  {failed_in_a_row} batches in a row failed; stopping, the rest will be tagged next run",
+                      file=sys.stderr)
+                break
         written += write_tags(con, labeler, model, batch, tags)
         if client is not None:
             print(f"  tagged {written:,}/{len(todo):,}")
