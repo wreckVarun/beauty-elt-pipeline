@@ -19,6 +19,7 @@ public dataset) and backfilled everything up to 2023-02-19:
 | products / brands | 8,494 / 304 (140 brands have reviews) |
 | dbt build | 33 data tests on this pass: 31 pass, **2 warn**, 0 errors |
 | run time | about a minute for load + dbt on a laptop |
+| LLM tags | all **2,000** sampled reviews tagged by Gemini (`gemini-3.5-flash-lite`, first 100 by `gemini-3.8-flash`) |
 
 The two warnings are real problems in the source, logged row by row and not blocking the load:
 
